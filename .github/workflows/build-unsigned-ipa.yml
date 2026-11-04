@@ -1,0 +1,83 @@
+name: Build unsigned iOS IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - build/unsigned-ipa
+    paths:
+      - .github/workflows/build-unsigned-ipa.yml
+      - project.yml
+
+jobs:
+  ipa:
+    runs-on: macos-15
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: GoSpoofer/go.mod
+          cache-dependency-path: GoSpoofer/go.sum
+
+      - name: Build Go library for iPhone
+        run: |
+          set -euo pipefail
+          bash GoSpoofer/make.sh
+          test -s GoSpoofer/build/libgolocationspoofer.a
+
+      - name: Generate Xcode project
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Compile iOS app and embedded VPN extension without signing
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project location-spoofer.xcodeproj \
+            -scheme location-spoofer \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/LocationSpooferDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE_SPECIFIER='' \
+            DEVELOPMENT_TEAM=''
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/LocationSpooferDerivedData/Build/Products/Release-iphoneos/location-spoofer.app"
+          test -d "$APP"
+          test -d "$APP/PlugIns/location-spoofer-tunnel.appex"
+          mkdir -p "$RUNNER_TEMP/unsigned/Payload"
+          cp -R "$APP" "$RUNNER_TEMP/unsigned/Payload/"
+          cd "$RUNNER_TEMP/unsigned"
+          /usr/bin/zip -qry "$GITHUB_WORKSPACE/LocationSpoofer-unsigned.ipa" Payload
+          test -s "$GITHUB_WORKSPACE/LocationSpoofer-unsigned.ipa"
+          /usr/bin/unzip -l "$GITHUB_WORKSPACE/LocationSpoofer-unsigned.ipa" | grep 'location-spoofer-tunnel.appex/'
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocationSpoofer-unsigned-IPA
+          path: LocationSpoofer-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
