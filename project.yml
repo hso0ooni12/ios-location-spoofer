@@ -62,6 +62,7 @@ targets:
           - "**/*.go"
           - "**/*.sh"
           - "build/**"
+          - "golocationspoofer"
           - "go.mod"
           - "go.sum"
           - "CGoLocationSpoofer.modulemap"
