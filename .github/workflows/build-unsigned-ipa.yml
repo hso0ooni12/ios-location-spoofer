@@ -9,6 +9,9 @@ on:
     paths:
       - .github/workflows/build-unsigned-ipa.yml
       - project.yml
+      - App/**
+      - Tunnel/**
+      - GoSpoofer/**
 
 jobs:
   ipa:
